@@ -20,7 +20,7 @@ class XLMRForTokenClassification(nn.Module):
         self.model = self.xlmr.model
         self.dropout = nn.Dropout(dropout_p)
         
-        self.device=device
+        self.device = device
 
         # initializing classification head
         self.classification_head.weight.data.normal_(mean=0.0, std=head_init_range)

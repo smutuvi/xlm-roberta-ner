@@ -1,8 +1,6 @@
-# XLM-Roberta NER
-Fine-tuning of the [XLM-Roberta](https://arxiv.org/abs/1911.02116) cross-lingual architecture for Sequence Tagging, namely Named Entity Recognition. 
+# RoBERTa Named Entity Recognition
 
-The code is inspired by [BERT-NER](https://github.com/kamalkraj/BERT-NER) repo by kamalkraj.
-
+This code is based on [xlm-roberta-ner](https://github.com/mohammadKhalifa/xlm-roberta-ner) by mohammadKhalifa. 
 
 ## Requirements 
 * `python 3.6+`
@@ -13,17 +11,13 @@ The code is inspired by [BERT-NER](https://github.com/kamalkraj/BERT-NER) repo b
 
 ## Setting up
 
-```bash
-export PARAM_SET=base # change to large to use the large architecture
+Download the Polish RoBERTa base model.
 
-# clone the repo
-git clone https://github.com/mohammadKhalifa/xlm-roberta-ner.git
-cd xlm-roberta-ner/
-mkdir pretrained_models 
-wget -P pretrained_models https://dl.fbaipublicfiles.com/fairseq/models/xlmr.$PARAM_SET.tar.gz
-tar xzvf pretrained_models/xlmr.$PARAM_SET.tar.gz  --directory pretrained_models/
-rm -r pretrained_models/xlmr.$PARAM_SET.tar.gz
+```bash
+wget https://github.com/sdadas/polish-roberta/releases/download/models/roberta_base_fairseq.zip
+unzip roberta_base_fairseq.zip
 ```
+
 
 ## Training and evaluating
 The code expects the data directory passed to contain 3 dataset splits: `train.txt`, `valid.txt` and `test.txt`.
@@ -87,48 +81,154 @@ Training arguments :
   --freeze_model        whether to freeze the XLM-R base model and train only
                         the classification heads
 ```
-For example: 
 
-```
-python main.py 
-      --data_dir=data/coNLL-2003/  \
-      --task_name=ner   \
-      --output_dir=model_dir/   \
-      --max_seq_length=16   \
-      --num_train_epochs 1  \
+
+## Tests on KPWr n82
+
+The following commands and parameters were used to train and test a model fine-grained named entity recognition 
+on the KPWr corpus.
+
+### Base model
+
+```bash
+time python main.py  \
+      --data_dir=data/kpwr_n82/  \
+      --task_name=ner \
+      --output_dir=models/kpwr_n82_base/   \
+      --max_seq_length=128   \
+      --num_train_epochs 50  \
       --do_eval \
-      --warmup_proportion=0.1 \
-      --pretrained_path pretrained_models/xlmr.$PARAM_SET/ \
-      --learning_rate 0.00007 \
+      --warmup_proportion=0.0 \
+      --pretrained_path roberta_base_fairseq \
+      --learning_rate 6e-5 \
+      --gradient_accumulation_steps 4 \
       --do_train \
       --eval_on test \
-      --train_batch_size 4
-      -- dropout 0.2
+      --train_batch_size 32 \
+      --dropout 0.2
+```
+```bash
+Time: 113m29.552s
 ```
 
-If you want to use the XLM-R model's outputs as features without finetuning, Use the `--freeze_model` argument.
+### Large model
 
-By default, the best model on the validation set is saved to `args.output_dir`. This model is then loaded and tested on the test set, if `--do_eval` and `--eval_on test`.
-
-## Results
-### CoNLL-2003
-I tried to reproduce the results in the paper by training the models using the following settings:
-
+```bash
+time python main.py  \
+      --data_dir=data/kpwr_n82/  \
+      --task_name=ner \
+      --output_dir=models/kpwr_n82_large/   \
+      --max_seq_length=128   \
+      --num_train_epochs 50  \
+      --do_eval \
+      --warmup_proportion=0.0 \
+      --pretrained_path roberta_large_fairseq \
+      --learning_rate 6e-5 \
+      --gradient_accumulation_steps 4 \
+      --do_train \
+      --eval_on test \
+      --train_batch_size 32 \
+      --dropout 0.2
 ```
---max_seq_length=128
---num_train_epochs 10
---warmup_proportion=0.0 
---learning_rate 6e-5  
---gradient_accumulation_steps 4 
---dropout 0.2 
---train_batch_size 32
+```bash
+Time: 260m32.544s
 ```
-I got the following F1 scores:
 
-| Model | Dev F1 | Test F1  |
-|---|---|---|
-| XLMR-Base |   95.29 | 91.14  |
-| XLMR-Large  | 96.14  |  91.81 |
 
-*The above results are close to those reported in the paper but a bit worse, probably due to the difference in experimental settings.*
+### Summary 
 
+Results on the test part of the KPWr n82 corpus.
+
+| Model                 | Precision |	Recall |	F1 |  	 Time |	Memory usage | GPU memory | Embeddings size |
+|-----------------------|----------:|---------:|------:|---------:|----------:|----------:|----------:|
+| Polish RoBERTa large                                                   | 76.10 | 78.72 | 77.39 | ~ 0.9 m | 3.0 GB |  3.8 GB | 0.71 GB + 1.40 GB |
+| Polish RoBERTa base                                                    | 74.37 | 76.72 | 75.52 | ~ 0.5 m | 3.0 GB |  2.0 GB | 0.25 GB + 0.50 GB |
+| [PolDeepNer](https://github.com/CLARIN-PL/PolDeepNer) (n82-elmo-kgr10) | 73.97 | 75.49 | 74.72 | ~ 4.0 m | 4.5 GB |         | 0.4 GB |
+
+
+### Detailed results for Polish RoBERTa large on KPWr n82 test
+
+```bash
+                           precision    recall  f1-score   support
+
+      nam_loc_gpe_country     0.9254    0.9384    0.9318       357
+            nam_eve_human     0.4000    0.4359    0.4172        78
+  nam_org_political_party     0.8636    0.9828    0.9194        58
+         nam_loc_gpe_city     0.8284    0.8947    0.8603       437
+      nam_pro_title_album     0.5000    0.7143    0.5882         7
+           nam_liv_person     0.9035    0.9416    0.9222       925
+          nam_adj_country     0.6935    0.7771    0.7330       166
+      nam_org_institution     0.6884    0.7143    0.7011       266
+             nam_oth_tech     0.6607    0.6066    0.6325        61
+       nam_pro_title_song     0.5000    0.5714    0.5333         7
+     nam_org_organization     0.7425    0.7033    0.7223       246
+              nam_liv_god     0.8857    0.8857    0.8857        35
+nam_loc_historical_region     0.5417    0.5909    0.5652        22
+           nam_org_nation     0.8571    0.7407    0.7947        81
+            nam_pro_brand     0.5106    0.5217    0.5161        46
+   nam_loc_hydronym_river     0.8913    0.8039    0.8454        51
+          nam_org_company     0.6216    0.6053    0.6133        76
+      nam_loc_land_region     0.6000    0.5455    0.5714        11
+            nam_num_house     0.9167    1.0000    0.9565        11
+             nam_fac_road     0.8317    0.8842    0.8571        95
+           nam_fac_system     0.7500    0.6923    0.7200        26
+     nam_loc_gpe_district     0.8889    0.4444    0.5926        18
+   nam_pro_media_periodic     0.8205    0.7805    0.8000        82
+        nam_pro_media_web     0.3731    0.6250    0.4673        40
+       nam_loc_gpe_admin3     0.8409    0.7872    0.8132        47
+      nam_eve_human_sport     0.6562    0.7636    0.7059        55
+       nam_org_group_team     0.9189    0.9189    0.9189       148
+              nam_fac_goe     0.5303    0.5469    0.5385        64
+   nam_loc_land_continent     0.9688    0.9688    0.9688        32
+                  nam_adj     0.5179    0.5577    0.5370        52
+   nam_pro_title_document     0.4902    0.6024    0.5405        83
+            nam_pro_title     0.4762    0.5714    0.5195        35
+       nam_loc_gpe_admin1     0.7432    0.8594    0.7971        64
+           nam_fac_square     0.7500    0.5000    0.6000         6
+         nam_pro_media_tv     0.5455    0.8571    0.6667         7
+         nam_pro_software     0.6569    0.6907    0.6734        97
+    nam_pro_software_game     0.5000    0.3333    0.4000         3
+            nam_org_group     0.3333    0.1667    0.2222        18
+    nam_loc_land_mountain     1.0000    0.5556    0.7143         9
+           nam_liv_animal     0.5000    0.1818    0.2667        11
+                  nam_oth     0.2564    0.4545    0.3279        22
+           nam_adj_person     1.0000    0.6111    0.7586        18
+         nam_oth_currency     0.9600    0.9412    0.9505        51
+        nam_pro_model_car     0.8519    0.8846    0.8679        26
+       nam_pro_title_book     0.3158    0.5455    0.4000        11
+            nam_pro_award     0.8000    0.6957    0.7442        23
+   nam_eve_human_cultural     0.3158    0.2727    0.2927        22
+              nam_oth_www     0.6667    0.1000    0.1739        20
+             nam_adj_city     0.8049    0.7857    0.7952        42
+      nam_oth_data_format     0.6000    0.3000    0.4000        10
+      nam_loc_land_island     0.7500    0.8182    0.7826        11
+         nam_pro_title_tv     0.7143    0.4167    0.5263        24
+       nam_loc_gpe_admin2     0.8485    0.7778    0.8116        36
+     nam_pro_title_treaty     0.1667    0.5000    0.2500         2
+  nam_loc_gpe_subdivision     0.7368    0.5385    0.6222        26
+    nam_eve_human_holiday     0.5714    0.4444    0.5000         9
+            nam_pro_media     0.7500    0.3750    0.5000         8
+          nam_oth_license     0.5714    0.7273    0.6400        11
+           nam_fac_bridge     0.2857    0.5000    0.3636         4
+                  nam_eve     1.0000    0.7500    0.8571         8
+       nam_org_group_band     0.6471    0.5789    0.6111        19
+             nam_loc_land     0.0000    0.0000    0.0000         2
+             nam_fac_park     0.7500    0.6000    0.6667        10
+         nam_oth_position     0.3529    0.6000    0.4444        10
+ nam_org_organization_sub     0.5000    0.3333    0.4000         3
+   nam_loc_country_region     0.1429    0.7500    0.2400         4
+                  nam_loc     0.0000    0.0000    0.0000         4
+     nam_loc_hydronym_sea     0.5000    0.6667    0.5714         3
+                  nam_pro     0.0000    0.0000    0.0000         2
+          nam_pro_vehicle     0.0000    0.0000    0.0000         4
+         nam_liv_habitant     0.5000    0.5714    0.5333         7
+    nam_loc_hydronym_lake     1.0000    1.0000    1.0000         2
+      nam_pro_media_radio     0.6000    1.0000    0.7500         3
+         nam_fac_goe_stop     0.2000    0.2500    0.2222         4
+   nam_loc_hydronym_ocean     1.0000    1.0000    1.0000         1
+            nam_num_phone     0.0000    0.0000    0.0000         2
+         nam_loc_hydronym     0.0000    0.0000    0.0000         1
+
+                micro avg     0.7610    0.7872    0.7739      4398
+                macro avg     0.7723    0.7872    0.7753      4398
+```

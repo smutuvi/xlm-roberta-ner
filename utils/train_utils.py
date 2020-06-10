@@ -44,6 +44,8 @@ def add_xlmr_args(parser):
      parser.add_argument("--do_eval",
                          action='store_true',
                          help="Whether to run eval or not.")
+     parser.add_argument("--prediction",
+                         help="Save tagging output")
      parser.add_argument("--eval_on",
                          default="dev",
                          help="Whether to run eval on the dev set or test set.")
@@ -163,3 +165,58 @@ def evaluate_model(model, eval_dataset, label_list, batch_size, device):
      f1 = f1_score(y_true, y_pred, average='Macro')
 
      return f1, report
+
+
+def predict_model(model, eval_dataset, label_list, batch_size, device):
+    """
+    Evaluates an NER model on the eval_dataset provided.
+    Returns:
+         F1_score: Macro-average f1_score on the evaluation dataset.
+         Report: detailed classification report
+    """
+
+    # Run prediction for full data
+    eval_sampler = SequentialSampler(eval_dataset)
+    eval_dataloader = DataLoader(
+        eval_dataset, sampler=eval_sampler, batch_size=batch_size)
+
+    model.eval()  # turn of dropout
+
+    y_true = []
+    y_pred = []
+
+    label_map = {i: label for i, label in enumerate(label_list, 1)}
+
+    for input_ids, label_ids, l_mask, valid_ids in eval_dataloader:
+
+        input_ids = input_ids.to(device)
+        label_ids = label_ids.to(device)
+
+        valid_ids = valid_ids.to(device)
+        l_mask = l_mask.to(device)
+
+        with torch.no_grad():
+            logits = model(input_ids, labels=None, labels_mask=None,
+                           valid_mask=valid_ids)
+
+        logits = torch.argmax(logits, dim=2)
+        logits = logits.detach().cpu().numpy()
+        label_ids = label_ids.cpu().numpy()
+
+        for i, cur_label in enumerate(label_ids):
+            temp_1 = []
+            temp_2 = []
+
+            for j, m in enumerate(cur_label):
+                if valid_ids[i][j]:  # if it's a valid label
+                    temp_1.append(label_map[m])
+                    temp_2.append(label_map[logits[i][j]])
+
+            assert len(temp_1) == len(temp_2)
+            y_true.append(temp_1)
+            y_pred.append(temp_2)
+
+    report = classification_report(y_true, y_pred, digits=4)
+    #f1 = f1_score(y_true, y_pred, average='Macro')
+
+    return y_pred

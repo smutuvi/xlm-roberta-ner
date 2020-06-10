@@ -1,8 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
-import csv
-import json
+import codecs
 import logging
 import os
 import random
@@ -10,36 +9,42 @@ import sys
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from pytorch_transformers import AdamW, WarmupLinearSchedule
-from torch import nn
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                              TensorDataset)
+from torch.utils.data import DataLoader, RandomSampler
 
-from seqeval.metrics import classification_report
 from model.xlmr_for_token_classification import XLMRForTokenClassification
-from utils.train_utils import add_xlmr_args, evaluate_model
+from utils.train_utils import add_xlmr_args, evaluate_model, predict_model
 from utils.data_utils import NerProcessor, create_dataset, convert_examples_to_features
 
-from tqdm import tqdm_notebook as tqdm
-from tqdm import trange
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+def get_labels(sentences):
+    label_set = set([])
+    for t in sentences:
+        label_set.update(t.label)
+    return sorted(list(label_set))
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser = add_xlmr_args(parser)
-
     args = parser.parse_args()
 
+    if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
+        raise ValueError("Output directory (%s) already exists and is not empty." % args.output_dir)
+
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+
+    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+                        datefmt='%m/%d/%Y %H:%M:%S',
+                        level=logging.INFO,
+                        filename=os.path.join(args.output_dir, "log.txt"))
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    logger = logging.getLogger(__name__)
+
     if args.gradient_accumulation_steps < 1:
-        raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
-            args.gradient_accumulation_steps))
+        raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1"
+                         % args.gradient_accumulation_steps)
 
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
@@ -47,18 +52,13 @@ def main():
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    if not args.do_train and not args.do_eval:
-        raise ValueError(
-            "At least one of `do_train` or `do_eval` must be True.")
-
-    if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
-        raise ValueError(
-            "Output directory ({}) already exists and is not empty.".format(args.output_dir))
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+    if not args.do_train and not args.do_eval and not args.prediction:
+        raise ValueError("At least one of `do_train`, `do_eval` or prediction must be present.")
 
     processor = NerProcessor()
-    label_list = processor.get_labels()
+    label_list = processor.get_labels(args.data_dir)
+    print(label_list)
+
     num_labels = len(label_list) + 1  # add one for IGNORE label
 
     train_examples = None
@@ -72,7 +72,9 @@ def main():
     # preparing model configs
     hidden_size = 768 if 'base' in args.pretrained_path else 1024 # TODO: move this inside model.__init__
 
-    device = 'cuda' if (torch.cuda.is_available() and not args.no_cuda) else 'cpu'
+    #device = 'cuda' if (torch.cuda.is_available() and not args.no_cuda) else 'cpu'
+    device = "cuda:0"
+    logger.info(device)
 
     # creating model
     model = XLMRForTokenClassification(pretrained_path=args.pretrained_path,
@@ -82,7 +84,6 @@ def main():
     model.to(device)
     no_decay = ['bias', 'final_layer_norm.weight']
 
-    
     params = list(model.named_parameters())
 
     optimizer_grouped_parameters = [
@@ -105,7 +106,6 @@ def main():
             if 'xlmr' in n and p.requires_grad:
                 p.requires_grad = False
 
-
     if args.fp16:
         try:
             from apex import amp
@@ -115,10 +115,7 @@ def main():
         model, optimizer = amp.initialize(
             model, optimizer, opt_level=args.fp16_opt_level)
 
-    global_step = 0
-    nb_tr_steps = 0
-    tr_loss = 0
-    label_map = {i: label for i, label in enumerate(label_list, 1)}
+    #global_step = 0
     if args.do_train:
         train_features = convert_examples_to_features(
             train_examples, label_list, args.max_seq_length, model.encode_word)
@@ -144,14 +141,14 @@ def main():
         
         best_val_f1 = 0.0
 
-        for _ in tqdm(range(args.num_train_epochs), desc="Epoch"):
+        for epoch_no in range(1, args.num_train_epochs+1):
+            logger.info("Epoch %d" % epoch_no)
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
 
-            tbar = tqdm(train_dataloader, desc="Iteration")
-            
             model.train()
-            for step, batch in enumerate(tbar):
+            steps = len(train_dataloader)
+            for step, batch in enumerate(train_dataloader):
                 batch = tuple(t.to(device) for t in batch)
                 input_ids, label_ids, l_mask, valid_ids, = batch
                 loss = model(input_ids, label_ids, l_mask, valid_ids)
@@ -172,26 +169,26 @@ def main():
                 tr_loss += loss.item()
                 nb_tr_examples += input_ids.size(0)
                 nb_tr_steps += 1
-                tbar.set_description('Loss = %.4f' %(tr_loss / (step+1)))
+                if step % 100 == 99:
+                    logger.info('Step = %d/%d; Loss = %.4f' % (step+1, steps, tr_loss / (step+1)))
 
                 if (step + 1) % args.gradient_accumulation_steps == 0:
                     optimizer.step()
                     scheduler.step()  # Update learning rate schedule
                     model.zero_grad()
-                    global_step += 1
-            
+
             logger.info("\nTesting on validation set...")
             f1, report = evaluate_model(model, val_data, label_list, args.eval_batch_size, device)
             if f1 > best_val_f1:
                 best_val_f1 = f1
-                logger.info("\nFound better f1=%.4f on validation set. Saving model\n" %(f1))
-                logger.info("%s\n" %(report))
+                logger.info("\nFound better f1=%.4f on validation set. Saving model\n" % f1)
+                logger.info("%s\n" % report)
                 
                 torch.save(model.state_dict(), open(os.path.join(args.output_dir, 'model.pt'), 'wb'))
             
-            else :
+            else:
                 logger.info("\nNo better F1 score: {}\n".format(f1))
-    else: # load a saved model
+    else:# load a saved model
         state_dict = torch.load(open(os.path.join(args.output_dir, 'model.pt'), 'rb'))
         model.load_state_dict(state_dict)
         logger.info("Loaded saved model")
@@ -215,7 +212,6 @@ def main():
         eval_data = create_dataset(eval_features)
         f1_score, report = evaluate_model(model, eval_data, label_list, args.eval_batch_size, device)
 
-       
         logger.info("\n%s", report)
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
@@ -223,6 +219,24 @@ def main():
             writer.write(report)
             logger.info("Done.")
 
+    if args.prediction and args.eval_on:
+        eval_examples = processor.get_test_examples(args.data_dir)
+
+        eval_features = convert_examples_to_features(
+            eval_examples, label_list, args.max_seq_length, model.encode_word)
+
+        eval_data = create_dataset(eval_features)
+        predictions = predict_model(model, eval_data, label_list, args.eval_batch_size, device)
+
+        with codecs.open(args.prediction, "w", "utf8") as fout:
+            for tokens, labels in zip(eval_examples, predictions):
+                for token, label in zip(tokens.text_a.split(" "), labels):
+                    fout.write("%s\t%s\n" % (token, label))
+                fout.write("\n")
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ValueError as er:
+        print("[ERROR] %s" % er)

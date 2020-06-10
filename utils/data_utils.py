@@ -4,6 +4,7 @@ import logging
 import torch 
 from torch.utils.data import TensorDataset
 
+
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
@@ -54,9 +55,6 @@ class NerProcessor:
         return self._create_examples(
             self._read_file(os.path.join(data_dir, "test.txt")), "test")
 
-    def get_labels(self):
-        return ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-MISC", "I-MISC"]
-
     def _read_file(self, filename):
         '''
         read file
@@ -67,7 +65,8 @@ class NerProcessor:
         label = []
 
         for i, line in enumerate(f, 1):
-            if not line.strip() or len(line) == 0 or line.startswith('-DOCSTART') or line[0] == "\n" or line[0] == '.':
+            if not line.strip() or len(line) == 0 or line.startswith('-DOCSTART') or line[0] == "\n":
+                #or line[0] == '.'  line[0] == '#':
                 if len(sentence) > 0:
                     data.append((sentence, label))
                     sentence = []
@@ -77,14 +76,12 @@ class NerProcessor:
             splits = line.split()
             assert len(splits) >= 2, "error on line {}. Found {} splits".format(i, len(splits))
             word, tag = splits[0], splits[-1]
-            assert tag in self.get_labels(), "unknown tag {} in line {}".format(tag, i)
             sentence.append(word.strip())
             label.append(tag.strip())
 
         if len(sentence) > 0:
             data.append((sentence, label))
-            sentence = []
-            label = []
+
         return data
 
     def _create_examples(self, lines, set_type):
@@ -98,6 +95,20 @@ class NerProcessor:
             examples.append(InputExample(
                 guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
+
+    @staticmethod
+    def _get_labels(sentences):
+        label_set = set([])
+        for t in sentences:
+            label_set.update(t.label)
+        return sorted(list(label_set))
+
+    def get_labels(self, data_dir):
+        label_set = set([])
+        label_set.update(NerProcessor._get_labels(self.get_train_examples(data_dir)))
+        label_set.update(NerProcessor._get_labels(self.get_dev_examples(data_dir)))
+        label_set.update(NerProcessor._get_labels(self.get_test_examples(data_dir)))
+        return sorted(list(label_set))
 
 
 def convert_examples_to_features(examples, label_list, max_seq_length, encode_method):
