@@ -1,8 +1,7 @@
 from torch.utils.data import SequentialSampler, DataLoader
-from tqdm import tqdm
-from seqeval.metrics import f1_score, classification_report
+from seqeval.metrics import f1_score
+from core.utils.sequence_labeling import classification_report
 import torch
-import torch.nn.functional as F
 
 
 def add_xlmr_args(parser):
@@ -177,8 +176,7 @@ def predict_model(model, eval_dataset, label_list, batch_size, device):
 
     # Run prediction for full data
     eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(
-        eval_dataset, sampler=eval_sampler, batch_size=batch_size)
+    eval_dataloader = DataLoader(eval_dataset, batch_size=1)
 
     model.eval()  # turn of dropout
 
@@ -217,6 +215,5 @@ def predict_model(model, eval_dataset, label_list, batch_size, device):
             y_pred.append(temp_2)
 
     report = classification_report(y_true, y_pred, digits=4)
-    #f1 = f1_score(y_true, y_pred, average='Macro')
 
     return y_pred

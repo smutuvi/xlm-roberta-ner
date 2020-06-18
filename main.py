@@ -12,9 +12,9 @@ import torch
 from pytorch_transformers import AdamW, WarmupLinearSchedule
 from torch.utils.data import DataLoader, RandomSampler
 
-from model.xlmr_for_token_classification import XLMRForTokenClassification
-from utils.train_utils import add_xlmr_args, evaluate_model, predict_model
-from utils.data_utils import NerProcessor, create_dataset, convert_examples_to_features
+from core.model.xlmr_for_token_classification import XLMRForTokenClassification
+from core.utils.train_utils import add_xlmr_args, evaluate_model, predict_model
+from core.utils.data_utils import NerProcessor, create_dataset, convert_examples_to_features
 
 
 def get_labels(sentences):
@@ -57,7 +57,7 @@ def main():
 
     processor = NerProcessor()
     label_list = processor.get_labels(args.data_dir)
-    print(label_list)
+    print(*label_list, sep="\n")
 
     num_labels = len(label_list) + 1  # add one for IGNORE label
 

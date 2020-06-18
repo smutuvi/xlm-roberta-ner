@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 class XLMRForTokenClassification(nn.Module):
 
-    def __init__(self, pretrained_path, n_labels, hidden_size, dropout_p, label_ignore_idx=0,
+    def __init__(self, pretrained_path, n_labels, hidden_size, dropout_p=0.2, label_ignore_idx=0,
                 head_init_range=0.04, device='cuda'):
         super().__init__()
 
