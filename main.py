@@ -229,9 +229,11 @@ def main():
         predictions = predict_model(model, eval_data, label_list, args.eval_batch_size, device)
 
         with codecs.open(args.prediction, "w", "utf8") as fout:
-            for tokens, labels in zip(eval_examples, predictions):
-                for token, label in zip(tokens.text_a.split(" "), labels):
-                    fout.write("%s\t%s\n" % (token, label))
+            for tokens, predicted_labels in zip(eval_examples, predictions):
+                for token_word, token_tag, predicted_label in zip(tokens.text_a.split(" "), tokens.label, predicted_labels):
+                # for token, predicted_label in zip(tokens.text_a.split(" "), predicted_labels):
+
+                    fout.write("%s\t%s\t%s\n" % (token_word, token_tag, predicted_label))
                 fout.write("\n")
 
 
