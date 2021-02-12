@@ -230,10 +230,10 @@ def main():
 
         with codecs.open(args.prediction, "w", "utf8") as fout:
             for tokens, predicted_labels in zip(eval_examples, predictions):
-                for token_word, token_tag, predicted_label in zip(tokens.text_a.split(" "), tokens.label, predicted_labels):
-                # for token, predicted_label in zip(tokens.text_a.split(" "), predicted_labels):
-
-                    fout.write("%s\t%s\t%s\n" % (token_word, token_tag, predicted_label))
+                # for token_word, token_label, predicted_label in zip(tokens.text_a.split(" "), token.label, predicted_labels):
+                for token, predicted_label in zip(tokens.text_a.split(" "), predicted_labels):
+                    # fout.write("%s\t%s\t%s\n" % (token_word, token_label,predicted_label))
+                    fout.write("%s\t%s\n" % (token, predicted_label))
                 fout.write("\n")
 
 

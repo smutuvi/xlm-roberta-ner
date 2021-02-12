@@ -6,7 +6,7 @@ python3 main.py \
     --task_name=ner   \
     --output_dir=${OUTPUT_DIR}   \
     --max_seq_length=256   \
-    --num_train_epochs 1  \
+    --num_train_epochs 30 \
     --do_eval \
     --warmup_proportion=0.0 \
     --pretrained_path pretrained_models/xlmr.$PARAM_SET/ \
@@ -15,4 +15,3 @@ python3 main.py \
     --eval_on test \
     --prediction=models/epidemic/eval_predictions.txt \
     --train_batch_size 16 \
-    --dropout 0.2
